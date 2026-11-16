@@ -1,0 +1,81 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Check if authenticated user is the designated Administrator
+    function isAdmin() {
+      return request.auth != null && 
+        request.auth.token.email.lower() == 'haroonaischoll112@gmail.com';
+    }
+
+    // Check if teacher's Google Gmail is in the authorized allowlist and active
+    function isInvitedTeacher() {
+      return request.auth != null && (
+        request.auth.token.email.lower() == 'learningwithrehan2026@gmail.com' ||
+        request.auth.token.email.lower() == 'muhammadyousuf9001@gmail.com' ||
+        request.auth.token.email.lower() == 'haroonaischool111@gmail.com' ||
+        (
+          exists(/databases/$(database)/documents/teacherInvitations/$(request.auth.token.email.lower())) &&
+          get(/databases/$(database)/documents/teacherInvitations/$(request.auth.token.email.lower())).data.active == true
+        )
+      );
+    }
+
+    // Administrator full access
+    match /{document=**} {
+      allow read, write: if isAdmin();
+    }
+
+    // Students collection: Teachers can only read minimum info to identify student & update balance
+    match /students/{studentId} {
+      allow read: if isInvitedTeacher();
+      allow update: if isInvitedTeacher() && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['remainingBalance', 'totalPaidAmount', 'updatedAt']);
+    }
+
+    // School Fee Payments: Teachers can only create payments with their own UID stamp and read their own
+    match /schoolPayments/{paymentId} {
+      allow create: if isInvitedTeacher() && 
+        request.resource.data.submittedByUid == request.auth.uid &&
+        request.resource.data.submittedByEmail == request.auth.token.email.lower();
+      allow read: if isInvitedTeacher() && resource.data.submittedByUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Teacher Invitations: Read for whitelist verification, Write only for Admin
+    match /teacherInvitations/{invitationId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
+    // Admin exclusive collections: STRICTLY FORBIDDEN TO TEACHERS
+    match /salaries/{salaryId} {
+      allow read, write: if isAdmin();
+    }
+    match /expenses/{expenseId} {
+      allow read, write: if isAdmin();
+    }
+    match /otherIncome/{incomeId} {
+      allow read, write: if isAdmin();
+    }
+    match /courses/{courseId} {
+      allow read, write: if isAdmin();
+    }
+    match /courseBatches/{batchId} {
+      allow read, write: if isAdmin();
+    }
+    match /courseStudents/{studentId} {
+      allow read, write: if isAdmin();
+    }
+    match /coursePayments/{paymentId} {
+      allow read, write: if isAdmin();
+    }
+    match /schoolSettings/{settingId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+    match /auditLogs/{logId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}
